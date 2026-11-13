@@ -1,0 +1,59 @@
+name: publish installers
+# Pulls the files listed in release.json from Google Drive, checks size + sha256,
+# and publishes them as release v<version> (marked latest). Asset names never change,
+# so https://github.com/panlop0926/print4x-download/releases/latest/download/<name> always
+# serves the newest version.
+on:
+  push:
+    paths: [release.json]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download from Drive and verify
+        run: |
+          mkdir -p out
+          python3 - <<'PY'
+          import json, hashlib, subprocess, os, sys
+          rel = json.load(open('release.json'))
+          for f in rel['files']:
+              path = os.path.join('out', f['name'])
+              ok = False
+              for fid in f['drive_ids']:
+                  url = f'https://drive.usercontent.google.com/download?id={fid}&export=download&confirm=t'
+                  for attempt in range(3):
+                      subprocess.run(['curl', '-L', '--fail', '-sS', '-o', path, url])
+                      size = os.path.getsize(path) if os.path.exists(path) else 0
+                      if size == f['size']:
+                          h = hashlib.sha256()
+                          with open(path, 'rb') as fh:
+                              for chunk in iter(lambda: fh.read(1 << 20), b''):
+                                  h.update(chunk)
+                          if h.hexdigest() == f['sha256']:
+                              ok = True
+                              break
+                          print(f"{f['name']}: sha256 mismatch from {fid}")
+                      else:
+                          print(f"{f['name']}: got {size} bytes from {fid} (want {f['size']})")
+                  if ok:
+                      break
+              if not ok:
+                  sys.exit(f"could not get a good copy of {f['name']}")
+              print(f"OK {f['name']}")
+          PY
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VER=$(python3 -c "import json;print(json.load(open('release.json'))['version'])")
+          TAG="v$VER"
+          NOTES="Print4X Studio $VER"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" out/* --clobber
+          else
+            gh release create "$TAG" out/* --title "Print4X Studio $VER" --notes "$NOTES" --latest
+          fi
