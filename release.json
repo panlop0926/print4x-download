@@ -1,11 +1,11 @@
 {
-  "version": "2.0.4",
+  "version": "2.0.5",
   "files": [
     {
       "name": "Print4X-Studio-Setup-Windows.exe",
       "drive_ids": ["1zKMo4jdLyix7HESXgBFjq_6yr5CyjYYr", "1JZzZTq7PtWoeBH7HtDkksm85agl6fnQD"],
-      "size": 1074319998,
-      "sha256": "b3a1da25d7a240ae263d4920ba7f71a8c879193af04d053dbd9f4aa7249616dd"
+      "size": 1076560712,
+      "sha256": "0e3dcd6e6082785d723402ffb27bba3d2284b12a419035411a42034cdbc1ba9f"
     },
     {
       "name": "Print4X-Studio-Mac-AppleChip.zip",
