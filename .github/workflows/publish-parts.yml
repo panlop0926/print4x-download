@@ -1,0 +1,53 @@
+name: publish installers from parts
+# Push a branch upload/<version> holding upload.json + parts/<asset>.partNN (each < 100 MB).
+# The runner joins the parts, checks size + sha256, copies the other assets named in 'keep' from the
+# release 'keep_from' (Drive quota can block downloads), publishes v<version> as latest, deletes the branch.
+on:
+  push:
+    branches: ['upload/**']
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Join parts and verify
+        run: |
+          mkdir -p out
+          python3 - <<'PY'
+          import json, hashlib, glob, os, sys
+          up = json.load(open('upload.json'))
+          for f in up['files']:
+              parts = sorted(glob.glob(f"parts/{f['name']}.part*"))
+              with open(os.path.join('out', f['name']), 'wb') as o:
+                  for p in parts:
+                      o.write(open(p, 'rb').read())
+              path = os.path.join('out', f['name'])
+              h = hashlib.sha256(open(path, 'rb').read()).hexdigest()
+              if os.path.getsize(path) != f['size'] or h != f['sha256']:
+                  sys.exit(f"{f['name']}: bad join ({os.path.getsize(path)} bytes, {h})")
+              print('OK', f['name'], len(parts), 'parts')
+          PY
+      - name: Keep the other assets of the previous release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PREV=$(python3 -c "import json;print(json.load(open('upload.json'))['keep_from'])")
+          for n in $(python3 -c "import json;print(' '.join(json.load(open('upload.json'))['keep']))"); do
+            gh release download "$PREV" -p "$n" -D out --clobber
+          done
+          ls -la out
+      - name: Publish release and remove the upload branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VER=$(python3 -c "import json;print(json.load(open('upload.json'))['version'])")
+          TAG="v$VER"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" out/* --clobber
+            gh release edit "$TAG" --latest
+          else
+            gh release create "$TAG" out/* --title "Print4X Studio $VER" --notes "Print4X Studio $VER" --latest
+          fi
+          git push origin --delete "${GITHUB_REF_NAME}"
